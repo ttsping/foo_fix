@@ -2,7 +2,11 @@
 
 namespace pfc { namespace io { namespace path {
 
+#ifdef _WINDOWS
 static const string g_pathSeparators ("\\/|");
+#else
+static const string g_pathSeparators ("/");
+#endif
 
 string getFileName(string path) {
 	t_size split = path.lastIndexOfAnyChar(g_pathSeparators);
@@ -121,38 +125,90 @@ char getDefaultSeparator() {
 #ifdef _WINDOWS
 	return '\\';
 #else
-#error PORTME
+    return '/';
 #endif
 }
 
-static const string g_illegalNameChars(g_pathSeparators +
+static const string g_illegalNameChars(g_pathSeparators
 #ifdef _WINDOWS
-									   ":<>*?\""
+									   + ":<>*?\""
 #else
-#error PORTME
+                                       + "*?"
 #endif
 									   );
-static const string g_illegalNameChars_noWC(g_pathSeparators +
+    
+static const string g_illegalNameChars_noWC(g_pathSeparators
 #ifdef _WINDOWS
-									   ":<>?\""
-#else
-#error PORTME
+									   + ":<>?\""
 #endif
 									   );
 string getIllegalNameChars(bool allowWC) {
 	return allowWC ? g_illegalNameChars_noWC : g_illegalNameChars;
 }
 
+#ifdef _WINDOWS
 static bool isIllegalTrailingChar(char c) {
 	return c == ' ' || c == '.';
 }
+static const char * const specialIllegalNames[] = {
+	"con", "aux", "lst", "prn", "nul", "eof", "inp", "out"
+};
 
-string validateFileName(string name, bool allowWC) {
+enum { maxPathComponent = 255 };
+static size_t safeTruncat( const char * str, size_t maxLen ) {
+	size_t i = 0;
+	size_t ret = 0;
+	for( ; i < maxLen; ++ i ) {
+		auto d = pfc::utf8_char_len( str + ret );
+		if ( d == 0 ) break;
+		ret += d;
+	}
+	return ret;
+}
+
+static size_t utf8_length( const char * str ) {
+	size_t ret = 0;
+	for (; ++ret;) {
+		size_t d = pfc::utf8_char_len( str );
+		if ( d == 0 ) break;
+		str += d;
+	}
+	return ret;
+}
+static string truncatePathComponent( string name, bool preserveExt ) {
+	
+	if (name.length() <= maxPathComponent) return name;
+	if (preserveExt) {
+		auto dot = name.lastIndexOf('.');
+		if (dot != pfc_infinite) {
+			const auto ext = name.subString(dot);
+			const auto extLen = utf8_length( ext.c_str() );
+			if (extLen < maxPathComponent) {
+				auto lim = maxPathComponent - extLen;
+				lim = safeTruncat( name.c_str(), lim );
+				if (lim < dot) {
+					return name.subString(0, lim) + ext;
+				}
+			}
+		}
+	}
+
+	size_t truncat = safeTruncat( name.c_str(), maxPathComponent );
+	return name.subString(0, truncat);
+}
+
+#endif
+
+string validateFileName(string name, bool allowWC, bool preserveExt) {
 	for(t_size walk = 0; name[walk];) {
 		if (name[walk] == '?') {
 			t_size end = walk;
 			do { ++end; } while(name[end] == '?');
-			name = name.subString(0, walk) + name.subString(end);
+			if ( walk == 0 && name[end] == '.' ) {
+				name = string("[unnamed]") + name.subString(end);
+			} else {
+				name = name.subString(0, walk) + name.subString(end);
+			}			
 		} else {
 			++walk;
 		}
@@ -172,6 +228,16 @@ string validateFileName(string name, bool allowWC) {
 		}
 		if (end < name.length() || begin > 0) name = name.subString(begin,end - begin);
 	}
+
+	name = truncatePathComponent(name, preserveExt);
+	
+	for( unsigned w = 0; w < _countof(specialIllegalNames); ++w ) {
+		if (pfc::stringEqualsI_ascii( name.c_str(), specialIllegalNames[w] ) ) {
+			name += "-";
+			break;
+		}
+	}
+
 	if (name.isEmpty()) name = "_";
 	return name;
 #else

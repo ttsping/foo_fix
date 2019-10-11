@@ -1,5 +1,9 @@
 #include "pfc.h"
 
+#ifdef _WIN32
+#include <Objbase.h>
+#endif
+
 /*
 6B29FC40-CA47-1067-B31D-00DD010662DA
 .
@@ -50,7 +54,7 @@ namespace {
 		return (read_word(ptr)<<16) | read_word(ptr+4);
 	}
 
-	void _GUID_from_text::read_bytes(BYTE * out,unsigned num,const char * ptr)
+	void _GUID_from_text::read_bytes(uint8_t * out,unsigned num,const char * ptr)
 	{
 		for(;num;num--)
 		{
@@ -106,7 +110,7 @@ GUID GUID_from_text(const char * text) {
 static inline char print_hex_digit(unsigned val)
 {
 	static const char table[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
-	assert((val & ~0xF) == 0);
+	PFC_ASSERT((val & ~0xF) == 0);
 	return table[val];
 }
 
@@ -153,9 +157,40 @@ void print_hex_raw(const void * buffer,unsigned bytes,char * p_out)
 	for(n=0;n<bytes;n++)
 		print_hex(in[n],out,1);
 }
+    
+    GUID createGUID() {
+        GUID out;
+#ifdef _WIN32
+        if (FAILED(CoCreateGuid( & out ) ) ) crash();
+#else
+        pfc::nixGetRandomData( &out, sizeof(out) );
+#endif
+        return out;
+    }
 
 }
 
 
 
 const GUID pfc::guid_null = { 0, 0, 0, { 0, 0, 0, 0, 0, 0, 0, 0 } };
+
+
+namespace pfc {
+	format_guid_cpp::format_guid_cpp(const GUID & guid) {
+		*this << "{0x" << pfc::format_hex(guid.Data1,8) << ", 0x" << pfc::format_hex(guid.Data2, 4) << ", 0x" << pfc::format_hex(guid.Data3,4) << ", {0x" << pfc::format_hex(guid.Data4[0],2);
+		for(int n = 1; n < 8; ++n) {
+			*this << ", 0x" << pfc::format_hex(guid.Data4[n],2);
+		}
+		*this << "}}";
+	}
+
+	uint64_t halveGUID(const GUID & id) {
+		static_assert(sizeof(id) == 2 * sizeof(uint64_t), "sanity" );
+		union {
+			GUID g;
+			uint64_t u[2];
+		} u;
+		u.g = id;
+		return u.u[0] ^ u.u[1];
+	}
+}

@@ -1,5 +1,4 @@
-#ifndef _PFC_LIST_H_
-#define _PFC_LIST_H_
+#pragma once
 
 namespace pfc {
 
@@ -13,19 +12,19 @@ public:
 
 	inline t_size get_size() const {return get_count();}
 
-	inline T get_item(t_size n) const {T temp; get_item_ex(temp,n); return std::move(temp);}
-	inline T operator[](t_size n) const {T temp; get_item_ex(temp,n); return std::move(temp);}
+	inline T get_item(t_size n) const {T temp; get_item_ex(temp,n); return temp;}
+	inline T operator[](t_size n) const {T temp; get_item_ex(temp,n); return temp;}
 
 	template<typename t_compare>
 	t_size find_duplicates_sorted_t(t_compare p_compare,bit_array_var & p_out) const
 	{
-		return pfc::find_duplicates_sorted_t<list_base_const_t<T> const &,t_compare>(*this,get_count(),p_compare,p_out);
+		return ::pfc::find_duplicates_sorted_t<list_base_const_t<T> const &,t_compare>(*this,get_count(),p_compare,p_out);
 	}
 
 	template<typename t_compare,typename t_permutation>
 	t_size find_duplicates_sorted_permutation_t(t_compare p_compare,t_permutation const & p_permutation,bit_array_var & p_out)
 	{
-		return pfc::find_duplicates_sorted_permutation_t<list_base_const_t<T> const &,t_compare,t_permutation>(*this,get_count(),p_compare,p_permutation,p_out);
+		return ::pfc::find_duplicates_sorted_permutation_t<list_base_const_t<T> const &,t_compare,t_permutation>(*this,get_count(),p_compare,p_permutation,p_out);
 	}
 
 	template<typename t_search>
@@ -43,22 +42,22 @@ public:
 
 	template<typename t_compare, typename t_param>
 	bool bsearch_t(t_compare p_compare,t_param const & p_param,t_size &p_index) const {
-		return pfc::bsearch_t(get_count(),*this,p_compare,p_param,p_index);
+		return ::pfc::bsearch_t(get_count(),*this,p_compare,p_param,p_index);
 	}
 
 	template<typename t_compare,typename t_param,typename t_permutation>
 	bool bsearch_permutation_t(t_compare p_compare,t_param const & p_param,const t_permutation & p_permutation,t_size & p_index) const {
-		return pfc::bsearch_permutation_t(get_count(),*this,p_compare,p_param,p_permutation,p_index);
+		return ::pfc::bsearch_permutation_t(get_count(),*this,p_compare,p_param,p_permutation,p_index);
 	}
 
 	template<typename t_compare,typename t_permutation>
 	void sort_get_permutation_t(t_compare p_compare,t_permutation const & p_permutation) const {
-		pfc::sort_get_permutation_t<list_base_const_t<T>,t_compare,t_permutation>(*this,p_compare,get_count(),p_permutation);
+		::pfc::sort_get_permutation_t<list_base_const_t<T>,t_compare,t_permutation>(*this,p_compare,get_count(),p_permutation);
 	}
 
 	template<typename t_compare,typename t_permutation>
 	void sort_stable_get_permutation_t(t_compare p_compare,t_permutation const & p_permutation) const {
-		pfc::sort_stable_get_permutation_t<list_base_const_t<T>,t_compare,t_permutation>(*this,p_compare,get_count(),p_permutation);
+		::pfc::sort_stable_get_permutation_t<list_base_const_t<T>,t_compare,t_permutation>(*this,p_compare,get_count(),p_permutation);
 	}
 
 	template<typename t_callback>
@@ -80,8 +79,10 @@ public:
 protected:
 	list_base_const_t() {}
 	~list_base_const_t() {}
-private:
-	const t_self & operator=(const t_self &) {throw pfc::exception_not_implemented();}
+
+	list_base_const_t(const t_self &) {}
+	void operator=(const t_self &) {}
+
 };
 
 
@@ -228,12 +229,12 @@ public:
 	class sort_callback_auto : public sort_callback
 	{
 	public:
-		int compare(const T& p_item1,const T& p_item2) {return pfc::compare_t(p_item1,p_item2);}
+		int compare(const T& p_item1,const T& p_item2) {return ::pfc::compare_t(p_item1,p_item2);}
 	};
 
-	void sort() {sort(sort_callback_auto());}
-	template<typename t_compare> void sort_t(t_compare p_compare) {sort(sort_callback_impl_t<t_compare>(p_compare));}
-	template<typename t_compare> void sort_stable_t(t_compare p_compare) {sort_stable(sort_callback_impl_t<t_compare>(p_compare));}
+	void sort() {sort_callback_auto cb;sort(cb);}
+	template<typename t_compare> void sort_t(t_compare p_compare) {sort_callback_impl_t<t_compare> cb(p_compare);sort(cb);}
+	template<typename t_compare> void sort_stable_t(t_compare p_compare) {sort_callback_impl_t<t_compare> cb(p_compare); sort_stable(cb);}
 
 	template<typename t_compare> void sort_remove_duplicates_t(t_compare p_compare)
 	{
@@ -294,6 +295,8 @@ public:
 protected:
 	list_base_t() {}
 	~list_base_t() {}
+	list_base_t(const t_self&) {}
+	void operator=(const t_self&) {}
 };
 
 
@@ -301,6 +304,7 @@ template<typename T,typename t_storage>
 class list_impl_t : public list_base_t<T>
 {
 public:
+    typedef list_base_t<T> t_base;
     typedef list_impl_t<T, t_storage> t_self;
 	list_impl_t() {}
 	list_impl_t(const t_self & p_source) { add_items(p_source); }
@@ -312,7 +316,7 @@ public:
 
 	template<typename t_in> 
 	t_size _insert_item_t(const t_in & item, t_size idx) {
-		return pfc::insert_t(m_buffer, item, idx);
+		return ::pfc::insert_t(m_buffer, item, idx);
 	}
 	template<typename t_in> 
 	t_size insert_item(const t_in & item, t_size idx) {
@@ -329,7 +333,7 @@ public:
 		t_size n;
 		t_size max = m_buffer.get_size();
 		for(n=idx+1;n<max;n++) {
-			pfc::move_t(m_buffer[n-1],m_buffer[n]);
+			::pfc::move_t(m_buffer[n-1],m_buffer[n]);
 		}
 		m_buffer.set_size(max-1);
 		return ret;
@@ -384,7 +388,7 @@ public:
 		m_buffer.set_size(count+num);
 		if (count > base) {
 			for(t_size n=count-1;(int)n>=(int)base;n--) {
-				pfc::move_t(m_buffer[n+num],m_buffer[n]);
+				::pfc::move_t(m_buffer[n+num],m_buffer[n]);
 			}
 		}
 
@@ -405,7 +409,7 @@ public:
 		m_buffer.set_size(count+num);
 		if (count > base) {
 			for(t_size n=count-1;(int)n>=(int)base;n--) {
-				pfc::move_t(m_buffer[n+num],m_buffer[n]);
+				::pfc::move_t(m_buffer[n+num],m_buffer[n]);
 			}
 		}
 
@@ -420,9 +424,9 @@ public:
 
 	void get_items_mask(list_impl_t<T,t_storage> & out,const bit_array & mask)
 	{
-		t_size n,count = get_size();
-		for_each_bit_array(n,mask,true,0,count)
+		mask.walk( get_size(), [&] (size_t n) {
 			out.add_item(m_buffer[n]);
+		} );
 	}
 
 	void filter_mask(const bit_array & mask)
@@ -433,7 +437,7 @@ public:
 
 		if (n<count) {
 			for(n=mask.find(true,n+1,count-n-1);n<count;n=mask.find(true,n+1,count-n-1))
-				pfc::move_t(m_buffer[total++],m_buffer[n]);
+				::pfc::move_t(m_buffer[total++],m_buffer[n]);
 
 			m_buffer.set_size(total);
 		}
@@ -448,39 +452,39 @@ public:
 
 	void sort()
 	{
-		pfc::sort_callback_impl_auto_wrap_t<t_storage> wrapper(m_buffer);
-		pfc::sort(wrapper,get_size());
+		::pfc::sort_callback_impl_auto_wrap_t<t_storage> wrapper(m_buffer);
+		::pfc::sort(wrapper,get_size());
 	}
 
 	template<typename t_compare>
 	void sort_t(t_compare p_compare)
 	{
-		pfc::sort_callback_impl_simple_wrap_t<t_storage,t_compare> wrapper(m_buffer,p_compare);
-		pfc::sort(wrapper,get_size());
+		::pfc::sort_callback_impl_simple_wrap_t<t_storage,t_compare> wrapper(m_buffer,p_compare);
+		::pfc::sort(wrapper,get_size());
 	}
 
 	template<typename t_compare>
 	void sort_stable_t(t_compare p_compare)
 	{
-		pfc::sort_callback_impl_simple_wrap_t<t_storage,t_compare> wrapper(m_buffer,p_compare);
-		pfc::sort_stable(wrapper,get_size());
+		::pfc::sort_callback_impl_simple_wrap_t<t_storage,t_compare> wrapper(m_buffer,p_compare);
+		::pfc::sort_stable(wrapper,get_size());
 	}
 	inline void reorder_partial(t_size p_base,const t_size * p_order,t_size p_count)
 	{
 		PFC_ASSERT(p_base+p_count<=get_size());
-		pfc::reorder_partial_t(m_buffer,p_base,p_order,p_count);
+		::pfc::reorder_partial_t(m_buffer,p_base,p_order,p_count);
 	}
 
 	template<typename t_compare>
 	t_size find_duplicates_sorted_t(t_compare p_compare,bit_array_var & p_out) const
 	{
-		return pfc::find_duplicates_sorted_t<list_impl_t<T,t_storage> const &,t_compare>(*this,get_size(),p_compare,p_out);
+		return ::pfc::find_duplicates_sorted_t<list_impl_t<T,t_storage> const &,t_compare>(*this,get_size(),p_compare,p_out);
 	}
 
 	template<typename t_compare,typename t_permutation>
 	t_size find_duplicates_sorted_permutation_t(t_compare p_compare,t_permutation p_permutation,bit_array_var & p_out)
 	{
-		return pfc::find_duplicates_sorted_permutation_t<list_impl_t<T,t_storage> const &,t_compare,t_permutation>(*this,get_size(),p_compare,p_permutation,p_out);
+		return ::pfc::find_duplicates_sorted_permutation_t<list_impl_t<T,t_storage> const &,t_compare,t_permutation>(*this,get_size(),p_compare,p_permutation,p_out);
 	}
 
 
@@ -493,18 +497,18 @@ private:
 	class sort_callback_wrapper
 	{
 	public:
-		explicit inline sort_callback_wrapper(sort_callback & p_callback) : m_callback(p_callback) {}
+		explicit inline sort_callback_wrapper(typename t_base::sort_callback & p_callback) : m_callback(p_callback) {}
 		inline int operator()(const T& item1,const T& item2) const {return m_callback.compare(item1,item2);}
 	private:
-		sort_callback & m_callback;
+		typename t_base::sort_callback & m_callback;
 	};
 public:
-	void sort(sort_callback & p_callback)
+	void sort(typename t_base::sort_callback & p_callback)
 	{
 		sort_t(sort_callback_wrapper(p_callback));
 	}
 	
-	void sort_stable(sort_callback & p_callback)
+	void sort_stable(typename t_base::sort_callback & p_callback)
 	{
 		sort_stable_t(sort_callback_wrapper(p_callback));
 	}
@@ -536,19 +540,19 @@ public:
 	void swap_item_with(t_size p_index,T & p_item)
 	{
 		PFC_ASSERT(p_index < get_size());
-		pfc::swap_t(m_buffer[p_index],p_item);
+		swap_t(m_buffer[p_index],p_item);
 	}
 
 	void swap_items(t_size p_index1,t_size p_index2) 
 	{
 		PFC_ASSERT(p_index1 < get_size());
 		PFC_ASSERT(p_index2 < get_size());
-		pfc::swap_t(m_buffer[p_index1],m_buffer[p_index2]);
+		swap_t(m_buffer[p_index1],m_buffer[p_index2]);
 	}
 
 	inline static void g_swap(list_impl_t<T,t_storage> & p_item1,list_impl_t<T,t_storage> & p_item2)
 	{
-		pfc::swap_t(p_item1.m_buffer,p_item2.m_buffer);
+		swap_t(p_item1.m_buffer,p_item2.m_buffer);
 	}
 
 	template<typename t_search>
@@ -570,8 +574,8 @@ protected:
 	t_storage m_buffer;
 };
 
-template<typename t_item, template<typename> class t_alloc = pfc::alloc_fast >
-class list_t : public list_impl_t<t_item,pfc::array_t<t_item,t_alloc> > { 
+template<typename t_item, template<typename> class t_alloc = alloc_fast >
+class list_t : public list_impl_t<t_item,array_t<t_item,t_alloc> > {
 public:
     typedef list_t<t_item, t_alloc> t_self;
 	template<typename t_in> t_self & operator=(t_in const & source) {this->remove_all(); this->add_items(source); return *this;}
@@ -579,8 +583,8 @@ public:
 	template<typename t_in> t_self & operator|=(t_in const & p_source) {this->add_items(p_source); return *this;}
 };
 
-template<typename t_item, t_size p_fixed_count, template<typename> class t_alloc = pfc::alloc_fast >
-class list_hybrid_t : public list_impl_t<t_item,pfc::array_hybrid_t<t_item,p_fixed_count,t_alloc> > {
+template<typename t_item, t_size p_fixed_count, template<typename> class t_alloc = alloc_fast >
+class list_hybrid_t : public list_impl_t<t_item,array_hybrid_t<t_item,p_fixed_count,t_alloc> > {
 public:
     typedef list_hybrid_t<t_item, p_fixed_count, t_alloc> t_self;    
 	template<typename t_in> t_self & operator=(t_in const & source) {this->remove_all(); this->add_items(source); return *this;}
@@ -634,4 +638,3 @@ private:
 template<typename item, template<typename> class alloc> class traits_t<list_t<item, alloc> > : public combine_traits<traits_t<alloc<item> >, traits_vtable> {};
 
 }
-#endif //_PFC_LIST_H_

@@ -1,5 +1,4 @@
-#ifndef _PFC_GUID_H_
-#define _PFC_GUID_H_
+#pragma once
 
 namespace pfc {
 
@@ -24,25 +23,19 @@ namespace pfc {
 
 	void print_hex_raw(const void * buffer,unsigned bytes,char * p_out);
 
-	static GUID makeGUID(t_uint32 Data1, t_uint16 Data2, t_uint16 Data3, t_uint8 Data4_1, t_uint8 Data4_2, t_uint8 Data4_3, t_uint8 Data4_4, t_uint8 Data4_5, t_uint8 Data4_6, t_uint8 Data4_7, t_uint8 Data4_8) {
+	inline GUID makeGUID(t_uint32 Data1, t_uint16 Data2, t_uint16 Data3, t_uint8 Data4_1, t_uint8 Data4_2, t_uint8 Data4_3, t_uint8 Data4_4, t_uint8 Data4_5, t_uint8 Data4_6, t_uint8 Data4_7, t_uint8 Data4_8) {
 		GUID guid = { Data1, Data2, Data3, {Data4_1, Data4_2, Data4_3, Data4_4, Data4_5, Data4_6, Data4_7, Data4_8 } };
 		return guid;
 	}
-	static GUID xorGUID(const GUID & v1, const GUID & v2) {
+	inline GUID xorGUID(const GUID & v1, const GUID & v2) {
 		GUID temp; memxor(&temp, &v1, &v2, sizeof(GUID)); return temp;
 	}
 
-	class format_guid_cpp : public pfc::string_formatter {
+	class format_guid_cpp : public string_formatter {
 	public:
-		format_guid_cpp(const GUID & guid) {
-			*this << "{0x" << pfc::format_hex(guid.Data1,8) << ", 0x" << pfc::format_hex(guid.Data2, 4) << ", 0x" << pfc::format_hex(guid.Data3,4) << ", {0x" << pfc::format_hex(guid.Data4[0],2);
-			for(int n = 1; n < 8; ++n) {
-				*this << ", 0x" << pfc::format_hex(guid.Data4[n],2);
-			}
-			*this << "}}";
-		}
+		format_guid_cpp(const GUID & guid);
 	};
+    
+    GUID createGUID();
+	uint64_t halveGUID( const GUID & id );
 }
-
-
-#endif

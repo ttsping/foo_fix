@@ -7,10 +7,9 @@ static t_size merge_tags_calc_rating_by_index(const file_info & p_info,t_size p_
 		ret += strlen(p_info.meta_enum_value(p_index,n)) + 10;//yes, strlen on utf8 data, plus a slight bump to prefer multivalue over singlevalue w/ separator
 	return ret;
 }
-
+#if 0
 static t_size merge_tags_calc_rating(const file_info & p_info,const char * p_field) {
 	t_size field_index = p_info.meta_find(p_field);
-	t_size ret = 0;
 	if (field_index != ~0) {
 		return merge_tags_calc_rating_by_index(p_info,field_index);
 	} else {
@@ -23,6 +22,7 @@ static void merge_tags_copy_info(const char * field,const file_info * from,file_
 	const char * val = from->info_get(field);
 	if (val) to->info_set(field,val);
 }
+#endif
 
 namespace {
 	struct meta_merge_entry {
@@ -67,7 +67,8 @@ static void merge_meta(file_info & p_out,const pfc::list_base_const_t<const file
 		}
 	}
 
-	map.enumerate(meta_merge_map_enumerator(p_out));
+    meta_merge_map_enumerator en(p_out);
+	map.enumerate(en);
 }
 
 void file_info::merge(const pfc::list_base_const_t<const file_info*> & p_in)
@@ -109,7 +110,7 @@ void file_info::merge(const pfc::list_base_const_t<const file_info*> & p_in)
 				const char * field_name = info->info_enum_name(field_ptr), * field_value = info->info_enum_value(field_ptr);
 				if (*field_value)
 				{
-					if (!stricmp_utf8(field_name,"tagtype"))
+					if (!pfc::stricmp_ascii(field_name,"tagtype"))
 					{
 						if (!tagtype.is_empty()) tagtype += "|";
 						tagtype += field_value;
@@ -147,11 +148,21 @@ void file_info::merge_fallback(const file_info & source) {
 
 static const char _tagtype[] = "tagtype";
 
+static bool isSC( const char * n ) {
+	return pfc::string_has_prefix_i(n, "Apple SoundCheck" );
+}
+
 void file_info::_set_tag(const file_info & tag) {
 	this->copy_meta(tag);
 	this->set_replaygain( replaygain_info::g_merge( this->get_replaygain(), tag.get_replaygain() ) );
-	const char * tt = tag.info_get(_tagtype);
-	if (tt) this->info_set(_tagtype, tt);
+
+	const size_t iCount = tag.info_get_count();
+	for( size_t iWalk = 0; iWalk < iCount; ++iWalk ) {
+		auto n = tag.info_enum_name(iWalk);
+		if ( pfc::stringEqualsI_ascii( n, _tagtype ) || isSC(n) ) {
+			this->info_set(n, tag.info_enum_value( iWalk ) );
+		}
+	}
 }
 
 void file_info::_add_tag(const file_info & otherTag) {
@@ -161,10 +172,19 @@ void file_info::_add_tag(const file_info & otherTag) {
 	const char * tt2 = otherTag.info_get(_tagtype);
 	if (tt2) {
 		if (tt1) {
-			this->info_set(_tagtype, pfc::string_formatter() << tt1 << "|" << tt2);
+			this->info_set(_tagtype, PFC_string_formatter() << tt1 << "|" << tt2);
 		} else {
 			this->info_set(_tagtype, tt2);
 		}
 	}
 
+	{
+		const size_t iCount = otherTag.info_get_count();
+		for( size_t w = 0; w < iCount; ++ w ) {
+			auto n = otherTag.info_enum_name(w);
+			if (isSC(n) && !this->info_get(n)) {
+				this->info_set( n, otherTag.info_enum_value(w) );
+			}
+		}
+	}
 }

@@ -8,8 +8,12 @@ void t_replaygain_config::reset()
 	m_preamp_with_rg = 0;
 }
 
-audio_sample t_replaygain_config::query_scale(const file_info & p_info) const
+audio_sample t_replaygain_config::query_scale(const file_info & info) const
 {
+	return query_scale(info.get_replaygain());
+}
+
+audio_sample t_replaygain_config::query_scale(const replaygain_info & info) const {
 	const audio_sample peak_margin = 1.0;//used to be 0.999 but it must not trigger on lossless
 
 	audio_sample peak = peak_margin;
@@ -19,8 +23,6 @@ audio_sample t_replaygain_config::query_scale(const file_info & p_info) const
 
 	if (m_source_mode == source_mode_track || m_source_mode == source_mode_album)
 	{
-		replaygain_info info = p_info.get_replaygain();
-		float gain_select = replaygain_info::gain_invalid, peak_select = replaygain_info::peak_invalid;
 		if (m_source_mode == source_mode_track)
 		{
 			if (info.is_track_gain_present()) {gain = info.m_track_gain; have_rg_gain = true; }
@@ -46,7 +48,7 @@ audio_sample t_replaygain_config::query_scale(const file_info & p_info) const
 		scale *= audio_math::gain_to_scale(gain);
 	}
 
-	if (m_processing_mode == processing_mode_peak || m_processing_mode == processing_mode_gain_and_peak)
+	if ((m_processing_mode == processing_mode_peak || m_processing_mode == processing_mode_gain_and_peak) && have_rg_peak)
 	{
 		if (scale * peak > peak_margin)
 			scale = (audio_sample)(peak_margin / peak);
@@ -106,7 +108,7 @@ void t_replaygain_config::format_name(pfc::string_base & p_out) const
 		{
 		case source_mode_none:
 			if (m_preamp_without_rg == 0) p_out = "None."; 
-			else p_out = pfc::string_formatter() << "Preamp : " << format_dbdelta(m_preamp_without_rg); 
+			else p_out = PFC_string_formatter() << "Preamp : " << format_dbdelta(m_preamp_without_rg);
 			break;
 		case source_mode_track:
 			{
@@ -133,7 +135,7 @@ void t_replaygain_config::format_name(pfc::string_base & p_out) const
 		{
 		case source_mode_none:
 			if (m_preamp_without_rg >= 0) p_out = "None.";
-			else p_out = pfc::string_formatter() << "Preamp : " << format_dbdelta(m_preamp_without_rg);
+			else p_out = PFC_string_formatter() << "Preamp : " << format_dbdelta(m_preamp_without_rg);
 			break;
 		case source_mode_track:
 			{
@@ -214,4 +216,11 @@ bool t_replaygain_config::is_active() const
 	default:
 		return false;
 	}
+}
+
+
+replaygain_scanner::ptr replaygain_scanner_entry::instantiate( uint32_t flags ) {
+	replaygain_scanner_entry_v2::ptr p2;
+	if ( p2 &= this ) return p2->instantiate( flags );
+	else return instantiate();
 }

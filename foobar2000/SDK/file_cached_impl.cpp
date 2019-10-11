@@ -1,8 +1,12 @@
 #include "foobar2000.h"
 namespace {
-class file_cached_impl_v2 : public file_cached {
+
+#define FILE_CACHED_DEBUG_LOG 0
+
+class file_cached_impl_v2 : public service_multi_inherit< file_cached, file_lowLevelIO > {
 public:
 	enum {minBlockSize = 4096};
+	enum {maxSkipSize = 128*1024};
 	file_cached_impl_v2(size_t maxBlockSize) : m_maxBlockSize(maxBlockSize) {
 		//m_buffer.set_size(blocksize);
 	}
@@ -15,6 +19,15 @@ public:
 		m_base = p_base;
 		m_can_seek = m_base->can_seek();
 		_reinit(p_abort);
+	}
+	size_t lowLevelIO(const GUID & guid, size_t arg1, void * arg2, size_t arg2size, abort_callback & abort) override {
+		abort.check();
+		file_lowLevelIO::ptr ll;
+		if ( ll &= m_base ) {
+			flush_buffer();
+			return ll->lowLevelIO(guid, arg1, arg2, arg2size, abort );
+		}
+		return 0;
 	}
 private:
 	void _reinit(abort_callback & p_abort) {
@@ -33,6 +46,21 @@ private:
 public:
 
 	t_filesize skip(t_filesize p_bytes,abort_callback & p_abort) {
+		if (p_bytes > maxSkipSize) {
+			const t_filesize size = get_size(p_abort);
+			if (size != filesize_invalid) {
+				const t_filesize position = get_position(p_abort);
+				const t_filesize toskip = pfc::min_t( p_bytes, size - position );
+				seek(position + toskip,p_abort);
+				return toskip;
+			}
+		}
+		return skip_( p_bytes, p_abort );
+	}
+	t_filesize skip_(t_filesize p_bytes,abort_callback & p_abort) {
+#if FILE_CACHED_DEBUG_LOG
+		FB2K_DebugLog() << "Skipping bytes: " << p_bytes;
+#endif
 		t_filesize todo = p_bytes;
 		for(;;) {
 			size_t inBuffer = this->bufferRemaining();
@@ -47,6 +75,9 @@ public:
 			baseSeek(m_position,p_abort);
 			m_readSize = pfc::min_t<size_t>(m_readSize << 1, this->m_maxBlockSize);
 			if (m_readSize < minBlockSize) m_readSize = minBlockSize;
+#if FILE_CACHED_DEBUG_LOG
+			FB2K_DebugLog() << "Growing read size: " << m_readSize;
+#endif
 			m_buffer.grow_size(m_readSize);
 			m_bufferState = m_base->read(m_buffer.get_ptr(), m_readSize, p_abort);
 			if (m_bufferState == 0) break;
@@ -57,6 +88,9 @@ public:
 	}
 
 	t_size read(void * p_buffer,t_size p_bytes,abort_callback & p_abort) {
+#if FILE_CACHED_DEBUG_LOG
+		FB2K_DebugLog() << "Reading bytes: " << p_bytes;
+#endif
 		t_uint8 * outptr = (t_uint8*)p_buffer;
 		size_t todo = p_bytes;
 		for(;;) {
@@ -74,6 +108,9 @@ public:
 			baseSeek(m_position,p_abort);
 			m_readSize = pfc::min_t<size_t>(m_readSize << 1, this->m_maxBlockSize);
 			if (m_readSize < minBlockSize) m_readSize = minBlockSize;
+#if FILE_CACHED_DEBUG_LOG
+			FB2K_DebugLog() << "Growing read size: " << m_readSize;
+#endif
 			m_buffer.grow_size(m_readSize);
 			m_bufferState = m_base->read(m_buffer.get_ptr(), m_readSize, p_abort);
 			if (m_bufferState == 0) break;
@@ -84,6 +121,9 @@ public:
 	}
 
 	void write(const void * p_buffer,t_size p_bytes,abort_callback & p_abort) {
+#if FILE_CACHED_DEBUG_LOG
+		FB2K_DebugLog() << "Writing bytes: " << p_bytes;
+#endif
 		p_abort.check();
 		baseSeek(m_position,p_abort);
 		m_base->write(p_buffer,p_bytes,p_abort);
@@ -107,6 +147,9 @@ public:
 		flush_buffer();
 	}
 	void seek(t_filesize p_position,abort_callback & p_abort) {
+#if FILE_CACHED_DEBUG_LOG
+		FB2K_DebugLog() << "Seeking: " << p_position;
+#endif
 		p_abort.check();
 		if (!m_can_seek) throw exception_io_object_not_seekable();
 		if (p_position > m_size) throw exception_io_seek_out_of_range();
@@ -114,16 +157,25 @@ public:
 
 		// special case
 		if (delta >= 0 && delta <= this->minBlockSize) {
-			t_filesize skipped = this->skip( delta, p_abort );
-			PFC_ASSERT( skipped == delta );
+#if FILE_CACHED_DEBUG_LOG
+			FB2K_DebugLog() << "Skip-seeking: " << p_position;
+#endif
+			t_filesize skipped = this->skip_( delta, p_abort );
+			PFC_ASSERT( skipped == delta ); (void) skipped;
 			return;
 		}
 
 		m_position = p_position;
 		// within currently buffered data?
 		if ((delta >= 0 && (uint64_t) delta <= bufferRemaining()) || (delta < 0 && (uint64_t)(-delta) <= m_bufferReadPtr)) {
+#if FILE_CACHED_DEBUG_LOG
+			FB2K_DebugLog() << "Quick-seeking: " << p_position;
+#endif
 			m_bufferReadPtr += (ptrdiff_t)delta;
 		} else {
+#if FILE_CACHED_DEBUG_LOG
+			FB2K_DebugLog() << "Slow-seeking: " << p_position;
+#endif
 			this->flush_buffer();
 		}
 	}
@@ -170,7 +222,7 @@ private:
 	size_t m_readSize;
 };
 
-class file_cached_impl : public file_cached {
+class file_cached_impl : public service_multi_inherit< file_cached, file_lowLevelIO > {
 public:
 	file_cached_impl(t_size blocksize) {
 		m_buffer.set_size(blocksize);
@@ -197,7 +249,15 @@ private:
 		flush_buffer();
 	}
 public:
-
+	size_t lowLevelIO(const GUID & guid, size_t arg1, void * arg2, size_t arg2size, abort_callback & abort) override {
+		abort.check();
+		file_lowLevelIO::ptr ll;
+		if ( ll &= m_base ) {
+			flush_buffer();
+			return ll->lowLevelIO(guid, arg1, arg2, arg2size, abort);
+		}
+		return 0;
+	}
 	t_size read(void * p_buffer,t_size p_bytes,abort_callback & p_abort) {
 		t_uint8 * outptr = (t_uint8*)p_buffer;
 		t_size done = 0;

@@ -13,7 +13,7 @@ void audio_chunk::set_data(const audio_sample * src,t_size samples,unsigned nch,
 	set_srate(srate);
 }
 
-static bool check_exclusive(unsigned val, unsigned mask)
+inline bool check_exclusive(unsigned val, unsigned mask)
 {
 	return (val&mask)!=0 && (val&mask)!=mask;
 }
@@ -97,7 +97,7 @@ template<bool byteSwap, bool isSigned> static void _import16any(const void * in,
 
 template<bool byteSwap, bool isSigned> static void _import32any(const void * in, audio_sample * out, size_t count) {
 	uint32_t const * inPtr = (uint32_t const*) in;
-	const audio_sample factor = 1.0f / (audio_sample) 0x80000000;
+	const audio_sample factor = 1.0f / (audio_sample) 0x80000000ul;
 	for(size_t walk = 0; walk < count; ++walk) {
 		uint32_t v = *inPtr++;
 		if (byteSwap) v = pfc::byteswap_t(v);
@@ -318,26 +318,42 @@ void audio_chunk::set_data_floatingpoint_ex(const void * ptr,t_size size,unsigne
 		} else {
 			for(size_t walk = 0; walk < count; ++walk) out[walk] = audio_math::decodeFloat24ptr(&in[walk*3]);
 		}
-	} else throw exception_io_data("invalid bit depth");
+	} else pfc::throw_exception_with_message< exception_io_data >("invalid bit depth");
 
 	set_sample_count(count/nch);
 	set_srate(srate);
 	set_channels(nch,p_channel_config);
 }
 
+void audio_chunk::debugChunkSpec() const {
+	FB2K_DebugLog() << "Chunk: " << get_sample_rate() << " Hz, " << get_channels() << ":0x" << pfc::format_hex(get_channel_config(),2) << " channels, " << get_sample_count() << " samples";
+}
+
+#if PFC_DEBUG
+void audio_chunk::assert_valid(const char * ctx) const {
+	if (!is_valid()) {
+		FB2K_DebugLog() << "audio_chunk::assert_valid failure in " << ctx;
+		debugChunkSpec();
+		uBugCheck();
+	}
+}
+#endif
 bool audio_chunk::is_valid() const
 {
 	unsigned nch = get_channels();
 	if (nch==0 || nch>256) return false;
 	if (!g_is_valid_sample_rate(get_srate())) return false;
 	t_size samples = get_sample_count();
-	if (samples==0 || samples >= 0x80000000 / (sizeof(audio_sample) * nch) ) return false;
+	if (samples==0 || samples >= 0x80000000ul / (sizeof(audio_sample) * nch) ) return false;
 	t_size size = get_data_size();
 	if (samples * nch > size) return false;
 	if (!get_data()) return false;
 	return true;
 }
 
+bool audio_chunk::is_spec_valid() const {
+	return this->get_spec().is_valid();
+}
 
 void audio_chunk::pad_with_silence_ex(t_size samples,unsigned hint_nch,unsigned hint_srate) {
 	if (is_empty())
@@ -364,7 +380,7 @@ void audio_chunk::pad_with_silence(t_size samples) {
 	if (samples > get_sample_count())
 	{
 		t_size old_size = get_sample_count() * get_channels();
-		t_size new_size = pfc::multiply_guarded(samples,get_channels());
+		t_size new_size = pfc::multiply_guarded(samples,(size_t)get_channels());
 		set_data_size(new_size);
 		pfc::memset_t(get_data() + old_size,(audio_sample)0,new_size - old_size);
 		set_sample_count(samples);
@@ -377,6 +393,11 @@ void audio_chunk::set_silence(t_size samples) {
 	pfc::memset_null_t(get_data(), items);
 	set_sample_count(samples);
 }
+
+void audio_chunk::set_silence_seconds( double seconds ) {
+	set_silence( (size_t) audio_math::time_to_samples( seconds, this->get_sample_rate() ) ); 
+}
+
 void audio_chunk::insert_silence_fromstart(t_size samples) {
 	t_size old_size = get_sample_count() * get_channels();
 	t_size delta = samples * get_channels();
@@ -554,3 +575,105 @@ bool audio_chunk::to_raw_data(mem_block_container & out, t_uint32 bps, bool useU
 		return g_toFixedPoint(inPtr, outPtr, count, bps, bpsValid, useUpperBits, scale);
 	}
 }
+
+audio_chunk::spec_t audio_chunk::makeSpec(uint32_t rate, uint32_t channels) {
+	return makeSpec( rate, channels, g_guess_channel_config(channels) );
+}
+
+audio_chunk::spec_t audio_chunk::makeSpec(uint32_t rate, uint32_t channels, uint32_t mask) {
+	spec_t spec = {};
+	spec.sampleRate = rate; spec.chanCount = channels; spec.chanMask = mask;
+	return spec;
+}
+
+bool audio_chunk::spec_t::equals( const spec_t & v1, const spec_t & v2 ) {
+	return v1.sampleRate == v2.sampleRate && v1.chanCount == v2.chanCount && v1.chanMask == v2.chanMask;
+}
+
+pfc::string8 audio_chunk::spec_t::toString() const {
+	pfc::string_formatter temp;
+	temp << sampleRate << "Hz " << chanCount << "ch";
+	if ( chanMask != audio_chunk::channel_config_mono && chanMask != audio_chunk::channel_config_stereo ) {
+		pfc::string8 strMask;
+		audio_chunk::g_formatChannelMaskDesc( chanMask, strMask );
+		temp << " " << strMask;
+	}		
+	return temp;
+}
+
+audio_chunk::spec_t audio_chunk::get_spec() const {
+	spec_t spec = {};
+	spec.sampleRate = this->get_sample_rate();
+	spec.chanCount = this->get_channel_count();
+	spec.chanMask = this->get_channel_config();
+	return spec;
+}
+void audio_chunk::set_spec(const spec_t & spec) {
+	set_sample_rate(spec.sampleRate);
+	set_channels( spec.chanCount, spec.chanMask );
+}
+
+bool audio_chunk::spec_t::is_valid() const {
+    if (this->chanCount==0 || this->chanCount>256) return false;
+    if (!audio_chunk::g_is_valid_sample_rate(this->sampleRate)) return false;
+    return true;
+}
+
+#ifdef _WIN32
+
+WAVEFORMATEX audio_chunk::spec_t::toWFX() const {
+	const uint32_t sampleWidth = sizeof(audio_sample);
+
+	WAVEFORMATEX wfx = {};
+	wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+	wfx.nChannels = chanCount;
+	wfx.nSamplesPerSec = sampleRate;
+	wfx.nAvgBytesPerSec = sampleRate * chanCount * sampleWidth;
+	wfx.nBlockAlign = chanCount * sampleWidth;
+	wfx.wBitsPerSample = sampleWidth * 8;
+	return wfx;
+}
+
+WAVEFORMATEXTENSIBLE audio_chunk::spec_t::toWFXEX() const {
+	const uint32_t sampleWidth = sizeof(audio_sample);
+	const bool isFloat = true;
+
+	WAVEFORMATEXTENSIBLE wfxe;
+	wfxe.Format = toWFX();
+	wfxe.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+	wfxe.Format.cbSize = sizeof(wfxe) - sizeof(wfxe.Format);
+	wfxe.Samples.wValidBitsPerSample = sampleWidth * 8;
+	wfxe.dwChannelMask = audio_chunk::g_channel_config_to_wfx(this->chanMask);
+	wfxe.SubFormat = isFloat ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+	
+	return wfxe;
+}
+
+WAVEFORMATEX audio_chunk::spec_t::toWFXWithBPS(uint32_t bps) const {
+	const uint32_t sampleWidth = (bps+7)/8;
+
+	WAVEFORMATEX wfx = {};
+	wfx.wFormatTag = WAVE_FORMAT_PCM;
+	wfx.nChannels = chanCount;
+	wfx.nSamplesPerSec = sampleRate;
+	wfx.nAvgBytesPerSec = sampleRate * chanCount * sampleWidth;
+	wfx.nBlockAlign = chanCount * sampleWidth;
+	wfx.wBitsPerSample = sampleWidth * 8;
+	return wfx;
+}
+
+WAVEFORMATEXTENSIBLE audio_chunk::spec_t::toWFXEXWithBPS(uint32_t bps) const {
+	const uint32_t sampleWidth = (bps + 7) / 8;
+	const bool isFloat = false;
+
+	WAVEFORMATEXTENSIBLE wfxe;
+	wfxe.Format = toWFXWithBPS(bps);
+	wfxe.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+	wfxe.Format.cbSize = sizeof(wfxe) - sizeof(wfxe.Format);
+	wfxe.Samples.wValidBitsPerSample = sampleWidth * 8;
+	wfxe.dwChannelMask = audio_chunk::g_channel_config_to_wfx(this->chanMask);
+	wfxe.SubFormat = isFloat ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+
+	return wfxe;
+}
+#endif // _WIN32

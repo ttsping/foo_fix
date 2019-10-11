@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 typedef int64_t t_int64;
 typedef uint64_t t_uint64;
@@ -45,10 +47,8 @@ namespace pfc {
 	};
 }
 
-
-typedef pfc::sized_int_t<sizeof(void*)>::t_unsigned t_size;
-typedef pfc::sized_int_t<sizeof(void*)>::t_signed t_ssize;
-
+typedef size_t t_size;
+typedef pfc::sized_int_t< sizeof(size_t) >::t_signed t_ssize;
 
 
 inline t_size MulDiv_Size(t_size x,t_size y,t_size z) {return (t_size) ( ((t_uint64)x * (t_uint64)y) / (t_uint64)z );}

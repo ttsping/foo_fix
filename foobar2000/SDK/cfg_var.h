@@ -67,7 +67,7 @@ private:
 	t_inttype m_val;
 protected:
 	void get_data_raw(stream_writer * p_stream,abort_callback & p_abort) {p_stream->write_lendian_t(m_val,p_abort);}
-	void set_data_raw(stream_reader * p_stream,t_size p_sizehint,abort_callback & p_abort) {
+	void set_data_raw(stream_reader * p_stream,t_size,abort_callback & p_abort) {
 		t_inttype temp;
 		p_stream->read_lendian_t(temp,p_abort);//alter member data only on success, this will throw an exception when something isn't right
 		m_val = temp;
@@ -88,9 +88,11 @@ public:
 
 typedef cfg_int_t<t_int32> cfg_int;
 typedef cfg_int_t<t_uint32> cfg_uint;
-//! Since relevant byteswapping functions also understand GUIDs, this can be abused to declare a cfg_guid.
+//! Since relevant byteswapping functions also understand GUIDs, this can be used to declare a cfg_guid.
 typedef cfg_int_t<GUID> cfg_guid;
 typedef cfg_int_t<bool> cfg_bool;
+typedef cfg_int_t<float> cfg_float;
+typedef cfg_int_t<double> cfg_double;
 
 //! String config variable. Stored in the stream with int32 header containing size in bytes, followed by non-null-terminated UTF-8 data.\n
 //! Note that cfg_var class and its derivatives may be only instantiated statically (as static objects or members of other static objects), NEVER dynamically (operator new, local variables, members of objects instantiated as such).
@@ -114,10 +116,11 @@ public:
 class cfg_string_mt : public cfg_var {
 protected:
 	void get_data_raw(stream_writer * p_stream,abort_callback & p_abort) {
-		insync(m_sync);
-		p_stream->write_object(m_val.get_ptr(),m_val.length(),p_abort);
+		pfc::string8 temp;
+		get(temp);
+		p_stream->write_object(temp.get_ptr(), temp.length(),p_abort);
 	}
-	void set_data_raw(stream_reader * p_stream,t_size p_sizehint,abort_callback & p_abort) {
+	void set_data_raw(stream_reader * p_stream,t_size,abort_callback & p_abort) {
 		pfc::string8_fastalloc temp;
 		p_stream->read_string_raw(temp,p_abort);
 		set(temp);
@@ -125,15 +128,15 @@ protected:
 public:
 	cfg_string_mt(const GUID & id, const char * defVal) : cfg_var(id), m_val(defVal) {}
 	void get(pfc::string_base & out) const {
-		insync(m_sync);
+		inReadSync( m_sync );
 		out = m_val;
 	}
 	void set(const char * val, t_size valLen = ~0) {
-		insync(m_sync);
+		inWriteSync( m_sync );
 		m_val.set_string(val, valLen);
 	}
 private:
-	mutable critical_section m_sync;
+	mutable pfc::readWriteLock m_sync;
 	pfc::string8 m_val;
 };
 
@@ -175,27 +178,27 @@ public:
 		reset(source);
 	}
 	template<typename TSource, unsigned Count> void reset(const TSource (& source)[Count]) {
-		set_size(Count); for(t_size walk = 0; walk < Count; ++walk) (*this)[walk] = source[walk];
+		this->set_size(Count); for(t_size walk = 0; walk < Count; ++walk) (*this)[walk] = source[walk];
 	}
 	void get_data_raw(stream_writer * p_stream,abort_callback & p_abort) {
 		stream_writer_formatter<> out(*p_stream,p_abort);
-		out << pfc::downcast_guarded<t_uint32>(get_size());
-		for(t_size walk = 0; walk < get_size(); ++walk) out << (*this)[walk];
+		out << pfc::downcast_guarded<t_uint32>(this->get_size());
+		for(t_size walk = 0; walk < this->get_size(); ++walk) out << (*this)[walk];
 	}
 	void set_data_raw(stream_reader * p_stream,t_size p_sizehint,abort_callback & p_abort) {
 		try {
 			stream_reader_formatter<> in(*p_stream,p_abort);
 			t_uint32 count; in >> count;
-			set_count(count);
+			this->set_count(count);
 			for(t_uint32 walk = 0; walk < count; ++walk) in >> (*this)[walk];
 		} catch(...) {
-			remove_all();
+			this->remove_all();
 			throw;
 		}
 	}
-	template<typename t_in> t_self & operator=(t_in const & source) {remove_all(); add_items(source); return *this;}
-	template<typename t_in> t_self & operator+=(t_in const & p_source) {add_item(p_source); return *this;}
-	template<typename t_in> t_self & operator|=(t_in const & p_source) {add_items(p_source); return *this;}
+	template<typename t_in> t_self & operator=(t_in const & source) {this->remove_all(); this->add_items(source); return *this;}
+	template<typename t_in> t_self & operator+=(t_in const & p_source) {this->add_item(p_source); return *this;}
+	template<typename t_in> t_self & operator|=(t_in const & p_source) {this->add_items(p_source); return *this;}
 };
 template<typename TList>
 class cfg_objListEx : public cfg_var, public TList {
@@ -208,16 +211,16 @@ public:
 		for(typename TList::const_iterator walk = this->first(); walk.is_valid(); ++walk) out << *walk;
 	}
 	void set_data_raw(stream_reader * p_stream,t_size p_sizehint,abort_callback & p_abort) {
-		remove_all();
+		this->remove_all();
 		stream_reader_formatter<> in(*p_stream,p_abort);
 		t_uint32 count; in >> count;
 		for(t_uint32 walk = 0; walk < count; ++walk) {
 			typename TList::t_item item; in >> item; this->add_item(item);
 		}
 	}
-	template<typename t_in> t_self & operator=(t_in const & source) {remove_all(); add_items(source); return *this;}
-	template<typename t_in> t_self & operator+=(t_in const & p_source) {add_item(p_source); return *this;}
-	template<typename t_in> t_self & operator|=(t_in const & p_source) {add_items(p_source); return *this;}
+	template<typename t_in> t_self & operator=(t_in const & source) {this->remove_all(); this->add_items(source); return *this;}
+	template<typename t_in> t_self & operator+=(t_in const & p_source) {this->add_item(p_source); return *this;}
+	template<typename t_in> t_self & operator|=(t_in const & p_source) {this->add_items(p_source); return *this;}
 };
 
 template<typename TObj>
@@ -276,11 +279,11 @@ private:
 		}
 	}
 	void set_data_raw(stream_reader * p_stream,t_size p_sizehint,abort_callback & p_abort) {
-		remove_all();
+		this->remove_all();
 		stream_reader_formatter<> in(*p_stream, p_abort);
 		t_uint32 count; in >> count;
 		for(t_uint32 walk = 0; walk < count; ++walk) {
-			TMap::t_key key; in >> key; PFC_ASSERT( !this->have_item(key) );
+			typename TMap::t_key key; in >> key; PFC_ASSERT( !this->have_item(key) );
 			try { in >> this->find_or_add( key ); } catch(...) { this->remove(key); throw; }
 		}
 	}

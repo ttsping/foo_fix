@@ -86,21 +86,174 @@ void stream_reader_chunk::g_skip(stream_reader * p_stream,abort_callback & p_abo
 	stream_reader_chunk(p_stream).flush(p_abort);
 }
 
-t_size reader_membuffer_base::read(void * p_buffer,t_size p_bytes,abort_callback & p_abort) {
-	p_abort.check_e();
-	t_size max = get_buffer_size();
-	if (max < m_offset) uBugCheck();
-	max -= m_offset;
-	t_size delta = p_bytes;
-	if (delta > max) delta = max;
-	memcpy(p_buffer,(char*)get_buffer() + m_offset,delta);
-	m_offset += delta;
-	return delta;
+
+
+static void fileSanitySeek(file::ptr f, pfc::array_t<uint8_t> const & content, size_t offset, abort_callback & aborter) {
+	const size_t readAmount = 64 * 1024;
+	pfc::array_staticsize_t<uint8_t> buf; buf.set_size_discard(readAmount);
+	f->seek(offset, aborter);
+	t_filesize positionGot = f->get_position(aborter);
+	if (positionGot != offset) {
+		FB2K_console_formatter() << "File sanity: at " << offset << " reported position became " << positionGot;
+		throw std::runtime_error("Seek test failure");
+	}
+	size_t did = f->read(buf.get_ptr(), readAmount, aborter);
+	size_t expected = pfc::min_t<size_t>(readAmount, content.get_size() - offset);
+	if (expected != did) {
+		FB2K_console_formatter() << "File sanity: at " << offset << " bytes, expected read size of " << expected << ", got " << did;
+		if (did > expected) FB2K_console_formatter() << "Read past EOF";
+		else  FB2K_console_formatter() << "Premature EOF";
+		throw std::runtime_error("Seek test failure");
+	}
+	if (memcmp(buf.get_ptr(), content.get_ptr() + offset, did) != 0) {
+		FB2K_console_formatter() << "File sanity: data mismatch at " << offset << " - " << (offset + did) << " bytes";
+		throw std::runtime_error("Seek test failure");
+	}
+	positionGot = f->get_position(aborter);
+	if (positionGot != offset + did) {
+		FB2K_console_formatter() << "File sanity: at " << offset << "+" << did << "=" << (offset + did) << " reported position became " << positionGot;
+		throw std::runtime_error("Seek test failure");
+	}
 }
 
-void reader_membuffer_base::seek(t_filesize position,abort_callback & p_abort) {
-	p_abort.check_e();
-	t_filesize max = get_buffer_size();
-	if (position == filesize_invalid || position > max) throw exception_io_seek_out_of_range();
-	m_offset = (t_size)position;
+bool fb2kFileSelfTest(file::ptr f, abort_callback & aborter) {
+	try {
+		pfc::array_t<uint8_t> fileContent;
+		f->reopen(aborter);
+		f->read_till_eof(fileContent, aborter);
+
+		{
+			t_filesize sizeClaimed = f->get_size(aborter);
+			if (sizeClaimed == filesize_invalid) {
+				FB2K_console_formatter() << "File sanity: file reports unknown size, actual size read is " << fileContent.get_size();
+			}
+			else {
+				if (sizeClaimed != fileContent.get_size()) {
+					FB2K_console_formatter() << "File sanity: file reports size of " << sizeClaimed << ", actual size read is " << fileContent.get_size();
+					throw std::runtime_error("File size mismatch");
+				}
+				else {
+					FB2K_console_formatter() << "File sanity: file size check OK: " << sizeClaimed;
+				}
+			}
+		}
+
+		{
+			FB2K_console_formatter() << "File sanity: testing N-first-bytes reads...";
+			const size_t sizeUpTo = pfc::min_t<size_t>(fileContent.get_size(), 1024 * 1024);
+			pfc::array_staticsize_t<uint8_t> buf1;
+			buf1.set_size_discard(sizeUpTo);
+
+			for (size_t w = 1; w <= sizeUpTo; w <<= 1) {
+				f->reopen(aborter);
+				size_t did = f->read(buf1.get_ptr(), w, aborter);
+				if (did != w) {
+					FB2K_console_formatter() << "File sanity: premature EOF reading first " << w << " bytes, got " << did;
+					throw std::runtime_error("Premature EOF");
+				}
+				if (memcmp(fileContent.get_ptr(), buf1.get_ptr(), did) != 0) {
+					FB2K_console_formatter() << "File sanity: file content mismatch reading first " << w << " bytes";
+					throw std::runtime_error("File content mismatch");
+				}
+			}
+		}
+		if (f->can_seek()) {
+			FB2K_console_formatter() << "File sanity: testing random access...";
+
+			{
+				size_t sizeUpTo = pfc::min_t<size_t>(fileContent.get_size(), 1024 * 1024);
+				for (size_t w = 1; w < sizeUpTo; w <<= 1) {
+					fileSanitySeek(f, fileContent, w, aborter);
+				}
+				fileSanitySeek(f, fileContent, fileContent.get_size(), aborter);
+				for (size_t w = 1; w < sizeUpTo; w <<= 1) {
+					fileSanitySeek(f, fileContent, fileContent.get_size() - w, aborter);
+				}
+				fileSanitySeek(f, fileContent, fileContent.get_size() / 2, aborter);
+			}
+		}
+		FB2K_console_formatter() << "File sanity test: all OK";
+		return true;
+	}
+	catch (std::exception const & e) {
+		FB2K_console_formatter() << "File sanity test failure: " << e.what();
+		return false;
+	}
+}
+
+
+namespace foobar2000_io {
+	void retryFileDelete(double timeout, abort_callback & a, std::function<void()> f) {
+		FB2K_RETRY_ON_EXCEPTION3(f(), a, timeout, exception_io_sharing_violation, exception_io_denied, exception_io_directory_not_empty);
+	}
+	void retryFileMove(double timeout, abort_callback & a, std::function<void() > f) {
+		FB2K_RETRY_FILE_MOVE( f(), a, timeout );
+	}
+	void retryOnSharingViolation(double timeout, abort_callback & a, std::function<void() > f) {
+		FB2K_RETRY_ON_SHARING_VIOLATION(f(), a, timeout);
+	}
+	void retryOnSharingViolation(std::function<void() > f, double timeout, abort_callback & a) {
+		FB2K_RETRY_ON_SHARING_VIOLATION( f(), a, timeout );
+	}
+    void listDirectory( const char * path, abort_callback & aborter, listDirectoryFunc_t func) {
+		listDirectoryCallbackImpl cb; cb.m_func = func;
+        filesystem::g_list_directory(path, cb, aborter);
+    }
+
+#ifdef _WIN32
+	pfc::string8 stripParentFolders( const char * inPath ) {
+		PFC_ASSERT( strstr(inPath, "://" ) == nullptr || matchProtocol( inPath, "file" ) );
+		size_t prefixLen = pfc::string_find_first(inPath, "://");
+		if ( prefixLen != pfc_infinite ) prefixLen += 3;
+		else prefixLen = 0;
+
+		pfc::chain_list_v2_t<pfc::string_part_ref> segments;
+		pfc::splitStringByChar(segments, inPath + prefixLen, '\\' );
+		for ( auto i = segments.first(); i.is_valid(); ) {
+			auto n = i; ++n;
+			if ( i->equals( "." ) ) {
+				segments.remove_single( i );
+			} else if ( i->equals( ".." ) ) {
+				auto p = i; --p;
+				if ( p.is_valid() ) segments.remove_single( p );
+				segments.remove_single( i );
+			}
+			i = n;
+		}
+		pfc::string8 ret;
+		if ( prefixLen > 0 ) ret.add_string( inPath, prefixLen );
+		bool bFirst = true;
+		for ( auto i = segments.first(); i.is_valid(); ++ i ) {
+			if (!bFirst) ret << "\\";
+			ret << *i;		
+			bFirst = false;
+		}
+		return ret;
+	}
+
+
+
+	pfc::string8 winGetVolumePath(const char * fb2kPath) {
+		PFC_ASSERT(matchProtocol(fb2kPath, "file"));
+		pfc::string8 native;
+		if (!filesystem::g_get_native_path(fb2kPath, native)) throw pfc::exception_invalid_params();
+
+		TCHAR outBuffer[MAX_PATH+1] = {};
+		WIN32_IO_OP( GetVolumePathName( pfc::stringcvt::string_os_from_utf8( native ), outBuffer, MAX_PATH ) );
+		return pfc::stringcvt::string_utf8_from_os( outBuffer ).get_ptr();
+	}
+
+	DWORD winVolumeFlags( const char * fb2kPath ) {
+		PFC_ASSERT(matchProtocol(fb2kPath, "file"));
+		pfc::string8 native;
+		if (!filesystem::g_get_native_path(fb2kPath, native)) throw pfc::exception_invalid_params();
+
+		TCHAR outBuffer[MAX_PATH + 1] = {};
+		WIN32_IO_OP(GetVolumePathName(pfc::stringcvt::string_os_from_utf8(native), outBuffer, MAX_PATH));
+
+		DWORD flags = 0;
+		WIN32_IO_OP(GetVolumeInformation(outBuffer, nullptr, 0, nullptr, nullptr, &flags, nullptr, 0));
+		return flags;
+	}
+#endif
 }

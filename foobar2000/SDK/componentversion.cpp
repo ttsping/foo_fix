@@ -14,17 +14,17 @@ bool component_installation_validator::have_other_file(const char * fn) {
 		path << fn;
 		try {
 			try {
-				bool v = filesystem::g_exists(path, abort_callback_dummy());
+				bool v = filesystem::g_exists(path, fb2k::noAbort);
 				PFC_ASSERT( v );
 				return v;
 			} catch(std::exception const & e) {
-				console::formatter() << "Component integrity check error: " << e << " (on: " << fn << ")";
+				FB2K_console_formatter() << "Component integrity check error: " << e << " (on: " << fn << ")";
 				throw;
 			}
 		} catch(exception_io_denied) {
-			continue;
+			
 		} catch(exception_io_sharing_violation) {
-			continue;
+			
 		} catch(exception_io_file_corrupted) { // happens
 			return false; 
 		} catch(...) {
