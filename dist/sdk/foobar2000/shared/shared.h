@@ -280,6 +280,7 @@ UINT SHARED_EXPORT uGetMenuItemType(HMENU menu,UINT position);
 HMODULE SHARED_EXPORT LoadSystemLibrary(const TCHAR * name);
 
 void SHARED_EXPORT uPrintCrashInfo_OnEvent(const char * message, t_size length);
+void SHARED_EXPORT uPrintCrashInfo_StartLogging(const char * path);
 
 }//extern "C"
 
@@ -567,7 +568,7 @@ typedef HICON hicon_t;
 typedef HMENU hmenu_t;
 typedef HFONT hfont_t;
 #else
-typedef void* hwnd_t;
+typedef void* hwnd_t; // Mac: bridged NSObject, context specific (NSWindow, NSView, NSViewController)
 typedef void* hicon_t;
 typedef void* hmenu_t;
 typedef void* hfont_t;

@@ -222,7 +222,8 @@ namespace pfc {
 	string8 string_directory(const char * p_path);
 
 	void float_to_string(char * out,t_size out_max,double val,unsigned precision,bool force_sign = false);//doesnt add E+X etc, has internal range limits, useful for storing float numbers as strings without having to bother with international coma/dot settings BS
-	double string_to_float(const char * src,t_size len = SIZE_MAX) noexcept;
+	double string_to_float(const char * src,t_size len) noexcept;
+    double string_to_float(const char * src) noexcept;
 
 	string8 format_float(double p_val,unsigned p_width = 0,unsigned p_prec = 7);
 
@@ -258,6 +259,9 @@ namespace pfc {
 
 	string8 format_file_size_short(uint64_t size, uint64_t * outScaleUsed = nullptr);
 
+	string8 format_index(size_t idx);
+	string8 format_permutation(const size_t* arg, size_t n);
+	string8 format_mask(bit_array const& mask, size_t n);
 }
 
 inline pfc::string_base & operator<<(pfc::string_base & p_fmt,const char * p_source) {p_fmt.add_string_(p_source); return p_fmt;}

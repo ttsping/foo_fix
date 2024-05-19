@@ -97,6 +97,22 @@ void file_info::overwrite_meta(const file_info & p_source) {
 	}
 }
 
+bool file_info::overwrite_meta_if_changed( const file_info & source ) {
+	const t_size total = source.meta_get_count();
+	bool changed = false;
+	for(t_size walk = 0; walk < total; ++walk) {
+		auto name = source.meta_enum_name(walk);
+		auto idx = this->meta_find(name);
+		if ( idx != SIZE_MAX ) {
+			if (field_value_equals(*this, idx, source, walk)) continue;
+		}
+
+		copy_meta_single(source, walk);
+		changed = true;
+	}
+	return changed;
+}
+
 void file_info::copy_meta_single(const file_info & p_source,t_size p_index)
 {
 	copy_meta_single_rename(p_source,p_index,p_source.meta_enum_name(p_index));
@@ -287,7 +303,24 @@ unsigned file_info::info_get_decoded_bps() const
 	val = info_get_int("bitspersample");
 	if (is_valid_bps(val)) return (unsigned)val;
 	return 0;
+}
 
+bool file_info::info_get_codec_long(pfc::string_base& out, const char * delim) const {
+	const char * codec;
+	codec = this->info_get("codec_long");
+	if (codec != nullptr) {
+		out = codec; return true;
+	}
+	codec = this->info_get("codec");
+	if (codec != nullptr) {
+		out = codec;
+		const char * profile = this->info_get("codec_profile");
+		if (profile != nullptr) {
+			out << delim << profile;
+		}
+		return true;
+	}
+	return false;
 }
 
 void file_info::reset()
@@ -415,6 +448,20 @@ void file_info::info_calculate_bitrate(uint64_t p_filesize,double p_length)
 {
 	unsigned b = audio_math::bitrate_kbps( p_filesize, p_length );
 	if ( b > 0 ) info_set_bitrate(b);
+}
+
+void file_info::info_set_bitspersample(uint32_t val, bool isFloat) {
+	// Bits per sample semantics
+	// "bitspersample" is set to integer value of bits per sample
+	// "bitspersample_extra" is used for bps of 32 or 64, either "floating-point" or "fixed-point"
+	// bps other than 32 or 64 are implicitly fixed-point as floating-point for such makes no sense
+
+	info_set_int("bitspersample", val);
+	if ( isFloat || val == 32 || val == 64 ) {
+		info_set("bitspersample_extra", isFloat ? "floating-point" : "fixed-point");
+	} else {
+		info_remove("bitspersample_extra");
+	}
 }
 
 bool file_info::is_encoding_float() const {
@@ -586,7 +633,10 @@ void file_info::to_console() const {
 	FB2K_console_formatter1() << "File info dump:";
 	if (get_length() > 0) FB2K_console_formatter() << "Duration: " << pfc::format_time_ex(get_length(), 6);
 	pfc::string_formatter temp;
-	for(t_size metaWalk = 0; metaWalk < meta_get_count(); ++metaWalk) {
+	const auto numMeta = meta_get_count(), numInfo = info_get_count();
+	if (numMeta == 0) {
+		FB2K_console_formatter() << "Meta is blank";
+	} else for(t_size metaWalk = 0; metaWalk < numMeta; ++metaWalk) {
 		const char * name = meta_enum_name( metaWalk );
 		const auto valCount = meta_enum_value_count( metaWalk );
 		for ( size_t valWalk = 0; valWalk < valCount; ++valWalk ) {
@@ -598,7 +648,9 @@ void file_info::to_console() const {
 		FB2K_console_formatter() << "Meta: " << meta_enum_name(metaWalk) << " = " << temp;
 		*/
 	}
-	for(t_size infoWalk = 0; infoWalk < info_get_count(); ++infoWalk) {
+	if (numInfo == 0) {
+		FB2K_console_formatter() << "Info is blank";
+	} else for(t_size infoWalk = 0; infoWalk < numInfo; ++infoWalk) {
 		FB2K_console_formatter() << "Info: " << info_enum_name(infoWalk) << " = " << info_enum_value(infoWalk);
 	}
 }
@@ -853,7 +905,6 @@ bool file_info::unicode_normalize_C() {
 	const size_t total = this->meta_get_count();
 	bool changed = false;
 	for (size_t mwalk = 0; mwalk < total; ++mwalk) {
-		const char* name = this->meta_enum_name(mwalk);
 		const size_t totalV = this->meta_enum_value_count(mwalk);
 		for (size_t vwalk = 0; vwalk < totalV; ++vwalk) {
 			const char* val = this->meta_enum_value(mwalk, vwalk);
@@ -880,3 +931,45 @@ void file_info::meta_enumerate(meta_enumerate_t cb) const {
 		}
 	}
 }
+
+#ifdef FOOBAR2000_MOBILE
+#include "album_art.h"
+#include "hasher_md5.h"
+
+void file_info::info_set_pictures( const GUID * guids, size_t size ) {
+    this->info_set("pictures", album_art_ids::ids_to_string(guids, size) );
+}
+
+pfc::array_t<GUID> file_info::info_get_pictures( ) const {
+    return album_art_ids::string_to_ids( this->info_get( "pictures" ) );
+}
+
+uint64_t file_info::makeMetaHash() const {
+	pfc::string_formatter temp;
+
+	auto doMeta = [&] ( const char * meta ) {
+		const char * p = meta_get(meta, 0);
+		if (p != nullptr) temp << p;
+		temp << "\n";
+	};
+	auto doMetaInt = [&] ( const char * meta ) {
+		const char * p = meta_get(meta, 0);
+		if (p != nullptr) {
+			auto s = strchr(p, '/' ); if ( s != nullptr ) p = s+1;
+			while(*p == '0') ++p;
+			temp << p;
+		}
+		temp << "\n";
+	};
+	doMeta("title");
+	doMeta("artist");
+	doMeta("album");
+	doMetaInt("tracknumber");
+	doMetaInt("discnumber");
+
+	if (temp.length() == 5) return 0;
+
+	return hasher_md5::get()->process_single( temp.c_str(), temp.length( ) ).xorHalve();
+}
+
+#endif // FOOBAR2000_MOBILE

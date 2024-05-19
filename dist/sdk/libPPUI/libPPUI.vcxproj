@@ -355,12 +355,14 @@
     <ClInclude Include="DarkMode-CHyperLink.h" />
     <ClInclude Include="DarkMode.h" />
     <ClInclude Include="DarkModeEx.h" />
+    <ClInclude Include="EditBoxFixes.h" />
     <ClInclude Include="gdi-types-portable.h" />
     <ClInclude Include="gdiplus-helpers-webp.h" />
     <ClInclude Include="gdiplus_helpers.h" />
     <ClInclude Include="GDIUtils.h" />
     <ClInclude Include="gesture.h" />
     <ClInclude Include="hookWindowMessages.h" />
+    <ClInclude Include="HyperLinkCtrl.h" />
     <ClInclude Include="IDataObjectUtils.h" />
     <ClInclude Include="ImageEncoder.h" />
     <ClInclude Include="ImplementOnFinalMessage.h" />
@@ -398,6 +400,7 @@
     <ClCompile Include="CDialogResizeHelper.cpp" />
     <ClCompile Include="CPowerRequest.cpp" />
     <ClCompile Include="DarkMode.cpp" />
+    <ClCompile Include="EditBoxFix.cpp" />
     <ClCompile Include="gdiplus_helpers.cpp" />
     <ClCompile Include="GDIUtils.cpp" />
     <ClCompile Include="IDataObjectUtils.cpp" />
@@ -420,12 +423,12 @@
     <ClCompile Include="TypeFind.cpp" />
     <ClCompile Include="win32_op.cpp" />
     <ClCompile Include="win32_utility.cpp" />
+    <ClCompile Include="wtl-pp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="libPPUI-license.txt" />
     <Text Include="libPPUI-readme.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-  </ImportGroup>
+  <ImportGroup Label="ExtensionTargets" />
 </Project>
