@@ -9,6 +9,5 @@
 
 // add headers that you want to pre-compile here
 #include "framework.h"
-#include "global.h"
 
 #endif //PCH_H

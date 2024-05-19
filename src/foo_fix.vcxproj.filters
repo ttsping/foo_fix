@@ -21,13 +21,7 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="context_menu.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="wav_tag_fixer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="global.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

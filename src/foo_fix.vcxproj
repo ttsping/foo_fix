@@ -200,9 +200,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="context_menu.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="global.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="wav_tag_fixer.h" />
   </ItemGroup>
