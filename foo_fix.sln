@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33414.496
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "foo_fix", "src\foo_ui_mod.vcxproj", "{E85D6213-352A-4591-9A4A-0125D149E0D4}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "foo_fix", "src\foo_fix.vcxproj", "{E85D6213-352A-4591-9A4A-0125D149E0D4}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pfc", "dist\sdk\pfc\pfc.vcxproj", "{EBFFFB4E-261D-44D3-B89C-957B31A0BF9C}"
 EndProject

@@ -21,5 +21,13 @@ BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID /*reserved*/)
 
 namespace
 {
-DECLARE_COMPONENT_VERSION("Fix Tool", "0.2", "FIX TOOL by ohyeah");
+    static const char* spec = R"(FIX TOOL by ohyeah
+
+Third party libraries:
+TagLib Audio Meta-Data Library
+https://taglib.org/
+
+)";
+
+DECLARE_COMPONENT_VERSION("Fix Tool", "0.2", spec);
 }

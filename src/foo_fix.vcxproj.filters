@@ -38,10 +38,10 @@
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="context_menu.cpp">
+    <ClCompile Include="wav_tag_fixer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="wav_tag_fixer.cpp">
+    <ClCompile Include="callback_impl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
